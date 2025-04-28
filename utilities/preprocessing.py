@@ -6,68 +6,83 @@ import torch
 import numpy as np
 
 
-def prepare_data():
-    """
-    Prepares the data for the STGCN model.
+def prepare_data_for_stgcn():
+    import numpy as np
 
-    Loads the velocity and adjacency data, converts the adjacency matrix to edge_index and edge_weight format,
-    and creates sequences of features and targets for training.
+
+import pandas as pd
+import torch
+from torch_geometric_temporal.signal import StaticGraphTemporalSignal
+
+
+def load_pemsd7_data(window_size=12):
+    """
+    Load PeMSD7 traffic dataset into a StaticGraphTemporalSignal object.
+
+    Args:
+        window_size (int): Number of time steps to use as features before predicting next step
+                        Default is 12 (representing 1 hour with 5-min intervals)
 
     Returns:
-        dataset (StaticGraphTemporalSignal): The dataset object containing the graph structure and temporal features.
+        StaticGraphTemporalSignal: Temporal graph data loader
     """
+    # Load velocity data (speeds at sensor stations)
+    velocity_df = pd.read_csv("dataset/PeMSD7_V_228.csv", header=None)
+    velocity_matrix = velocity_df.values  # Shape: (288, 12672)
 
-    # Load the data
-    # To do: Allow for dynamic data loading
-    velocity_df = pd.read_csv("PeMSD7_V_228.csv")
-    adjacency_df = pd.read_csv("PeMSD7_W_228.csv")
+    # Load adjacency matrix (data structure of the graph)
+    adj_df = pd.read_csv("dataset/PeMSD7_W_228.csv", header=None)
+    adj_matrix = adj_df.values  # Shape: (288, 288)
 
-    # Convert adjacency matrix to edge_index and edge_weight format for PyG
-    adjacency_matrix = adjacency_df.values
-    edge_index = []
-    edge_weight = []
+    # Create edge_index and edge_weight from adjacency matrix
+    edge_indices = []
+    edge_weights = []
 
-    # Convert adjacency matrix to COO format
-    for i in range(adjacency_matrix.shape[0]):
-        for j in range(adjacency_matrix.shape[1]):
-            if adjacency_matrix[i, j] > 0:  # If there's a connection
-                edge_index.append([i, j])
-                edge_weight.append(adjacency_matrix[i, j])
+    # Convert adjacency matrix to edge_index and edge_weight format
+    for i in range(adj_matrix.shape[0]):
+        for j in range(adj_matrix.shape[1]):
+            if adj_matrix[i, j] > 0:  # If there is an edge, otherwise skip
+                edge_indices.append([i, j])
+                edge_weights.append(adj_matrix[i, j])
 
-    edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-    edge_weight = torch.tensor(edge_weight, dtype=torch.float)
+    edge_index = np.array(edge_indices).T  # Shape: (2, num_edges)
+    edge_weight = np.array(edge_weights)  # Shape: (num_edges,)
 
-    # Prepare feature sequences (assuming we want to use velocity as the feature)
-    features = velocity_df.values
-    num_timesteps = features.shape[0]
-    num_nodes = features.shape[1]
+    # Create temporal features and targets
+    num_nodes = velocity_matrix.shape[0]  # 288 nodes
+    num_time_steps = velocity_matrix.shape[
+        1
+    ]  # 12672 time steps (5-min intervals representing 44 days in total)
 
-    # Create sequences for STGCN (using history to predict future)
-    sequence_length = 12  # Example: using 1-hour data (12 * 5min) to predict
-    target_offset = 1  # Example: predicting the next time step
+    # We'll create sequences where we use window_size previous time steps as features
+    # and predict the next time step
+    features = []
+    targets = []
 
-    # Prepare features and targets
-    feature_sequences = []
-    target_sequences = []
+    # For each valid time window
+    for t in range(num_time_steps - window_size):
+        # Features: window_size previous time steps
+        feature_window = []
+        for w in range(window_size):
+            # Get node features at time t+w
+            node_features = velocity_matrix[:, t + w].reshape(num_nodes, 1)
+            feature_window.append(node_features)
 
-    for i in range(num_timesteps - sequence_length - target_offset + 1):
-        # Sequence of features for each node
-        feature_sequences.append(features[i : i + sequence_length])
-        # Target values for each node
-        target_sequences.append(
-            features[i + sequence_length : i + sequence_length + target_offset]
-        )
+        # Stack time steps to create node features with temporal dimension
+        # Shape: (num_nodes, window_size)
+        time_features = np.hstack(feature_window)
+        features.append(time_features)
 
-    # Convert to tensors
-    feature_sequences = torch.FloatTensor(np.array(feature_sequences))
-    target_sequences = torch.FloatTensor(np.array(target_sequences))
+        # Target: next time step after the window
+        target = velocity_matrix[:, t + window_size].reshape(num_nodes, 1)
+        targets.append(target)
 
-    # Create a dataset object
+    # Convert to StaticGraphTemporalSignal
     dataset = StaticGraphTemporalSignal(
         edge_index=edge_index,
         edge_weight=edge_weight,
-        features=feature_sequences,
-        targets=target_sequences,
+        features=features,
+        targets=targets,
     )
 
     return dataset
@@ -87,8 +102,8 @@ def batch_to_df(batch_idx, dataset):
     """
 
     # Get the feature sequence and target for a specific batch
-    feature_seq = dataset[batch_idx][0].numpy()  # Features shape: [12, 228]
-    target_seq = dataset[batch_idx][1].numpy()  # Target shape: [1, 228]
+    feature_seq = dataset[batch_idx][0].cpu().numpy()  # Features shape: [12, 228]
+    target_seq = dataset[batch_idx][1].cpu().numpy()  # Target shape: [1, 228]
 
     # Create DataFrames
     feature_df = pd.DataFrame(
