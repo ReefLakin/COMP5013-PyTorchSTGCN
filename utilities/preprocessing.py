@@ -36,8 +36,8 @@ def load_dataset_for_stgcn(window_size=12):
     edge_weight = np.array(edge_weights)  # Shape: (num_edges,)
 
     # Create temporal features and targets
-    num_nodes = velocity_matrix.shape[0]  # 288 nodes
-    num_time_steps = velocity_matrix.shape[1]  # 12672 time steps (5-min intervals representing 44 days in total)
+    num_nodes = velocity_matrix.shape[1]    # 288 nodes (columns)
+    num_time_steps = velocity_matrix.shape[0]  # 12672 time steps (rows, 5-min intervals representing 44 days in total)
 
     # We'll create sequences where we use window_size previous time steps as features
     # and predict the next time step
@@ -46,20 +46,14 @@ def load_dataset_for_stgcn(window_size=12):
 
     # For each valid time window
     for t in range(num_time_steps - window_size):
-        # Features: window_size previous time steps
-        feature_window = []
-        for w in range(window_size):
-            # Get node features at time t+w
-            node_features = velocity_matrix[:, t + w].reshape(num_nodes, 1)
-            feature_window.append(node_features)
-
-        # Stack time steps to create node features with temporal dimension
+        # Features: window_size previous time steps for all nodes
         # Shape: (num_nodes, window_size)
-        time_features = np.hstack(feature_window)
-        features.append(time_features)
-
-        # Target: next time step after the window
-        target = velocity_matrix[:, t + window_size].reshape(num_nodes, 1)
+        feature_window = velocity_matrix[t:t+window_size, :].T
+        features.append(feature_window)
+        
+        # Target: next time step after the window for all nodes
+        # Shape: (num_nodes, 1)
+        target = velocity_matrix[t+window_size, :].reshape(num_nodes, 1)
         targets.append(target)
 
     # Convert to StaticGraphTemporalSignal
