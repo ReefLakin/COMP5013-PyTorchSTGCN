@@ -1,27 +1,14 @@
 import pandas as pd
 import numpy as np
-import torch
-from torch_geometric_temporal.signal import StaticGraphTemporalSignal
-import torch
-import numpy as np
-
-
-def prepare_data_for_stgcn():
-    import numpy as np
-
-
-import pandas as pd
-import torch
 from torch_geometric_temporal.signal import StaticGraphTemporalSignal
 
 
-def load_pemsd7_data(window_size=12):
+def load_dataset_for_stgcn(window_size=12):
     """
     Load PeMSD7 traffic dataset into a StaticGraphTemporalSignal object.
 
     Args:
-        window_size (int): Number of time steps to use as features before predicting next step
-                        Default is 12 (representing 1 hour with 5-min intervals)
+        window_size (int): Number of time steps to use as features before predicting next step. Default is 12 (representing 1 hour with 5-min intervals)
 
     Returns:
         StaticGraphTemporalSignal: Temporal graph data loader
@@ -50,9 +37,7 @@ def load_pemsd7_data(window_size=12):
 
     # Create temporal features and targets
     num_nodes = velocity_matrix.shape[0]  # 288 nodes
-    num_time_steps = velocity_matrix.shape[
-        1
-    ]  # 12672 time steps (5-min intervals representing 44 days in total)
+    num_time_steps = velocity_matrix.shape[1]  # 12672 time steps (5-min intervals representing 44 days in total)
 
     # We'll create sequences where we use window_size previous time steps as features
     # and predict the next time step
@@ -86,60 +71,3 @@ def load_pemsd7_data(window_size=12):
     )
 
     return dataset
-
-
-def batch_to_df(batch_idx, dataset):
-    """
-    Converts a specific batch of features and targets from the dataset to DataFrames.
-
-    Args:
-        batch_idx (int): The index of the batch to convert.
-        dataset (StaticGraphTemporalSignal): The dataset object.
-
-    Returns:
-        feature_df (pd.DataFrame): DataFrame containing the features of the batch.
-        target_df (pd.DataFrame): DataFrame containing the targets of the batch.
-    """
-
-    # Get the feature sequence and target for a specific batch
-    feature_seq = dataset[batch_idx][0].cpu().numpy()  # Features shape: [12, 228]
-    target_seq = dataset[batch_idx][1].cpu().numpy()  # Target shape: [1, 228]
-
-    # Create DataFrames
-    feature_df = pd.DataFrame(
-        feature_seq,
-        columns=[f"Sensor_{i}" for i in range(228)],
-        index=[f"T-{12-i}" for i in range(12)],
-    )
-
-    target_df = pd.DataFrame(
-        target_seq, columns=[f"Sensor_{i}" for i in range(228)], index=["T+1"]
-    )
-
-    return feature_df, target_df
-
-
-def save_example_batch(batch_idx, dataset):
-    """
-    Extracts a sample batch from the dataset and saves it to CSV files.
-
-    Args:
-        dataset (StaticGraphTemporalSignal): The dataset object.
-        batch_idx (int): The index of the batch to extract.
-
-    Returns:
-        None
-    """
-
-    # Example: Extract and save sample 100
-    feature_df, target_df = batch_to_df(batch_idx, dataset)
-
-    # Save to CSV
-    feature_df.to_csv("sample_100_features.csv")
-    target_df.to_csv("sample_100_targets.csv")
-
-    # Print summary statistics
-    print("Feature statistics:")
-    print(feature_df.describe())
-    print("\nTarget statistics:")
-    print(target_df.describe())
